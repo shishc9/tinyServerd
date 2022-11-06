@@ -5,7 +5,9 @@
 int main(int argc, char** argv) {
 
   Server server;
-  server.Start();
+  if (server.start() < 0) {
+    return -1;
+  }
 
   return 0;
 }

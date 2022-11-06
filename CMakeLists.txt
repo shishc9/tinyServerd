@@ -13,6 +13,7 @@ include_directories(
 
 message("---- find all source files... ----")
 aux_source_directory(. SRC_DIR)
+list(REMOVE_ITEM SRC_DIR "./client_test_template.cpp")
 aux_source_directory(./utils SRC_DIR)
 aux_source_directory(./server SRC_DIR)
 
