@@ -2,6 +2,7 @@
 #define TINY_SERVER_H
 
 #include <string>
+#include "../http/HttpRequest.hpp"
 
 class Server {
 public:
@@ -19,6 +20,8 @@ public:
 private:
   int bind_and_listen();
   int server_loop();
+  void set_signal_handler();
+  HttpRequest parse_http_request(int);
 
 private:
   std::string server_ip;

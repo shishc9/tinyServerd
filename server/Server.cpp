@@ -1,10 +1,17 @@
 #include "Server.hpp"
 #include "../utils/MyUtil.hpp"
+#include "../http/HttpRequest.hpp"
+#include "../http/HttpRequestParser.hpp"
+#include "../http/HttpResponseWriter.hpp"
+#include "../http/HttpRequestHandler.hpp"
+#include "../common/Const.hpp"
 #include <iostream>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <signal.h>
+#include <cstdlib>
 #include <string>
 #include <cstring>
 
@@ -54,11 +61,34 @@ int Server::bind_and_listen() {
   return 0;
 }
 
+void Server::set_signal_handler() {
+  struct sigaction sa;
+  sa.sa_handler = SIG_IGN;
+  sa.sa_flags = SA_NOCLDWAIT;
+  if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+    MyUtil::Echo("sigaction error");
+    exit(1);
+  }
+}
+
+HttpRequest Server::parse_http_request(int fd) {
+  char buffer[Const::BUFFER_SIZE];
+  int len = 0;
+  if ((len = read(fd, buffer, sizeof(buffer))) < 0) {
+    MyUtil::Echo("read http request error");
+    exit(1);
+  }
+
+  std::string stringbuf(buffer);
+  HttpRequest request = HttpRequestParser::parse2http(stringbuf);
+  return request;
+}
+
 int Server::server_loop() {
   struct sockaddr_in client_address;
   socklen_t client_len = sizeof(client_address);
-  int conn_fd;
-  char buffer[128];
+  int conn_fd, child_pid;
+  // char buffer[128];
 
   while (true) {
     conn_fd = accept(this->fd, (struct sockaddr*)&client_address, &client_len);
@@ -66,15 +96,27 @@ int Server::server_loop() {
       MyUtil::Echo("accept failed!");
       break;
     }
+    // memset(buffer, 0, sizeof(buffer));
 
-    memset(buffer, 0, sizeof(buffer));
-    if (recv(conn_fd, buffer, 128, 0) == -1) {
-      MyUtil::Echo("recv failed!");
+    if ((child_pid = fork()) < 0) {
+      MyUtil::Echo("fork error");
       break;
+    } else if (child_pid == 0) {
+      close(fd);
+      HttpRequest request = parse_http_request(conn_fd);
+      HttpResponseWriter response(conn_fd);
+      HttpRequestHandler::handler_request(request, response);
+      exit(0);
+    } else {
+      close(conn_fd);
     }
+    // if (recv(conn_fd, buffer, 128, 0) == -1) {
+    //   MyUtil::Echo("recv failed!");
+    //   break;
+    // }
 
-    MyUtil::Echo("server recv: " + std::string(buffer));
-    close(conn_fd);
+    // MyUtil::Echo("server recv: " + std::string(buffer));
+    // close(conn_fd);
   }
 
   return 0;
@@ -83,15 +125,17 @@ int Server::server_loop() {
 int Server::start() {
   if (!get_ready()) {
     MyUtil::Echo("server is not ready, so can't start!");
-    return 0;
+    return -1;
   }
 
   if (bind_and_listen() < 0) {
     MyUtil::Echo("bind or listen failed...");
-    return 0;
+    return -1;
   }
 
-  MyUtil::Echo("hello, this is my serverd");
+  // MyUtil::Echo("hello, this is my serverd");
+  this->is_ready = true;
+  set_signal_handler();
   server_loop();
   return 0;
 }
